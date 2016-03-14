@@ -1,0 +1,57 @@
+\documentclass{article}
+
+\usepackage{CJKutf8}
+\usepackage{lastpage}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{titlesec}% http://ctan.org/pkg/titlesec
+\usepackage{hyperref}
+\usepackage{listings}
+
+%
+% Basic Document Settings
+%
+
+\topmargin=-0.45in
+\evensidemargin=0in
+\oddsidemargin=0in
+\textwidth=6.5in
+\textheight=9.0in
+\headsep=0.25in
+
+\linespread{1.1}
+
+\pagestyle{fancy}
+\lhead{\hmwkAuthorName\ (\hmwkAuthorID)}
+\rhead{\hmwkClassAlias\ (\hmwkUniversity, \hmwkClassSection): \hmwkTitle}
+\cfoot{\thepage\ of \pageref{LastPage}}
+
+\renewcommand\headrulewidth{0.4pt}
+\renewcommand\footrulewidth{0.4pt}
+
+\setlength\parindent{0pt}
+\setlength{\parskip}{1em}
+\titleformat{\section}%
+  [hang]% <shape>
+  {\normalfont\bfseries\Large}% <format>
+  {}% <label>
+  {0pt}% <sep>
+  {}% <before code>
+\renewcommand{\thesection}{}% Remove section references...
+\renewcommand{\thesubsection}{\arabic{subsection}}%... from subsections
+
+%
+% Title Page
+%
+\title{
+    \vspace{2in}
+    \textmd{\textbf{\hmwkClass:\ \hmwkTitle}}\\
+    \normalsize\vspace{0.1in}\small{Due\ on\ \hmwkDueDate}\\
+    \vspace{0.1in}\large{\textit{Instructors \hmwkClassInstructor}}
+    \vspace{3in}
+}
+
+\author{
+    \textbf{\hmwkAuthorName} \small{(\hmwkAuthorID)}
+}
+\date{}
