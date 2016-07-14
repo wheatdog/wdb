@@ -1,4 +1,4 @@
-/* wdb.h - v0.01 - WheatDog's Box, A Personal C Helper Library - public domain
+/* wdb.h - v0.03 - WheatDog's Box, A Personal C Helper Library - public domain
                  - no warranty implied; use at your own risk
 
          This is a single header file with a bunch of useful stuff.
