@@ -1,4 +1,4 @@
-/* wdb.h - v0.03 - WheatDog's Box, A Personal C Helper Library - public domain
+/* wdb.h - v0.04 - WheatDog's Box, A Personal C Helper Library - public domain
                  - no warranty implied; use at your own risk
 
          This is a single header file with a bunch of useful stuff.
@@ -34,6 +34,7 @@ TODOS
     - Does I want wdb_arr dynamic shrink? or wdb_arr_set_capacity is good enough?
 
 VERSION HISTORY
+    - 0.04  - wdb_list
     - 0.03  - wdb_arr
     - 0.02  - Preset and Base Types
     - 0.01  - Initial Version
@@ -438,6 +439,67 @@ WDB_DEF void *wdb__arr_set_capacity(void *array, isize capacity, isize element_s
         }                                           \
     } while(0)
 
+
+#define wdb_arr_bin_search(ptr, target, cmp) wdb_arr__bin_search((ptr), wdb_arr_count(ptr), wdb_size_of((ptr)[0]), (target), (cmp))
+WDB_DEF b32 wdb_arr__bin_search(void *ptr, isize count , isize element_size, const void *target, int (*cmp)(const void *, const void *));
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Circular Double Linked List (linux-kernel-like)
+//
+//
+
+struct wdb_list__ele
+{
+    struct wdb_list__ele *prev;
+    struct wdb_list__ele *next;
+};
+typedef struct wdb_list__ele wdb_list_ele;
+
+WDB_DEF void wdb_list_init(wdb_list_ele *head);
+WDB_DEF void wdb_list__add(wdb_list_ele *new_ele, wdb_list_ele *prev, wdb_list_ele *next);
+WDB_DEF void wdb_list_append(wdb_list_ele *new_ele, wdb_list_ele *head);
+WDB_DEF void wdb_list_prepend(wdb_list_ele *new_ele, wdb_list_ele *head);
+
+WDB_DEF void wdb_list__del_internal(wdb_list_ele *prev, wdb_list_ele *next);
+WDB_DEF void wdb_list__del_entry(wdb_list_ele *entry);
+WDB_DEF void wdb_list_del(wdb_list_ele *entry);
+WDB_DEF void wdb_list_del_init(wdb_list_ele *entry);
+
+WDB_DEF void wdb_list_move_append(wdb_list_ele *entry, wdb_list_ele *list);
+WDB_DEF void wdb_list_move_prepend(wdb_list_ele *entry, wdb_list_ele *list);
+
+WDB_DEF void wdb_list_replace(wdb_list_ele *old, wdb_list_ele *new_ele);
+WDB_DEF void wdb_list_replace_init(wdb_list_ele *old, wdb_list_ele *new_ele);
+
+WDB_DEF void wdb_list_rotate_left(wdb_list_ele *entry);
+
+WDB_DEF void wdb_list__cut_position(wdb_list_ele *list, wdb_list_ele *head, wdb_list_ele *entry);
+WDB_DEF void wdb_list_cut_position(wdb_list_ele *list, wdb_list_ele *head, wdb_list_ele *entry);
+
+WDB_DEF void wdb_list__splice(const wdb_list_ele *list, wdb_list_ele *prev, wdb_list_ele *next);
+WDB_DEF void wdb_list_splice(wdb_list_ele *list, wdb_list_ele *head);
+WDB_DEF void wdb_list_splice_tail(wdb_list_ele *list, wdb_list_ele *head);
+WDB_DEF void wdb_list_splice_init(wdb_list_ele *list, wdb_list_ele *head);
+WDB_DEF void wdb_list_splice_tail_init(wdb_list_ele *list, wdb_list_ele *head);
+
+WDB_DEF b32 wdb_list_is_last(const wdb_list_ele *ele, const wdb_list_ele *head);
+WDB_DEF b32 wdb_list_is_empty(const wdb_list_ele *list);
+
+#define wdb_list_entry(list_elem, type, member) ((type *) ((u8 *)(list_elem) - wdb_offset_of(type, member)))
+
+#if 0
+#define wdb_list_last_entry(list_elem, type, member) (wdb_list_is_empty(list_elem) ? NULL : wdb_list_entry((list_elem)->prev, type, member))
+#define wdb_list_first_entry(list_elem, type, member) (wdb_list_is_empty(list_elem) ? NULL : wdb_list_entry((list_elem)->next, type, member))
+#define wdb_list_next_entry(type_ptr, type, member) wdb_list_entry((type_ptr)->member.next, type, member)
+#define wdb_list_prev_entry(type_ptr, type, member) wdb_list_entry((type_ptr)->member.prev, type, member)
+#endif
+
+#define wdb_list_for_each(cur, head) for (cur = (head)->next; cur != (head); cur = cur->next)
+#define wdb_list_for_each_safe(cur, tmp, head) for (cur = (head)->next, tmp = cur->next; cur != (head); cur = tmp, tmp = cur->next)
+#define wdb_list_for_each_rev(cur, head) for (cur = (head)->prev; cur != (head); cur = cur->prev)
+#define wdb_list_for_each_rev_safe(cur, tmp, head) for (cur = (head)->prev, tmp = cur->prev; cur != (head); cur = tmp, tmp = cur->prev)
+
 #if 0
 {
 #endif
@@ -512,6 +574,183 @@ void *wdb__arr_set_capacity(void *array, isize capacity, isize element_size)
     new_header->capacity = capacity;
 
     return new_header+1;
+}
+
+b32 wdb_arr__bin_search(void *ptr, isize count , isize element_size, const void *target, int (*cmp)(const void *, const void *))
+{
+    isize mid, left = 0, right = count;
+    u8 *u8ptr = (u8 *)ptr;
+    int ret;
+
+    while (right != left) {
+        mid = (left + right)/2;
+        ret = cmp(u8ptr + element_size*mid, target);
+        if (ret == 0) return true;
+        if (ret > 0)
+            right = mid;
+        else
+            left = mid+1;
+    }
+
+    return false;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Circular Double Linked List (linux-kernel-like)
+//
+//
+
+inline void wdb_list_init(wdb_list_ele *head)
+{
+    head->next = head;
+    head->prev = head;
+}
+
+inline void wdb_list__add(wdb_list_ele *new_ele, wdb_list_ele *prev, wdb_list_ele *next)
+{
+    prev->next = new_ele;
+    new_ele->prev = prev;
+    new_ele->next = next;
+    next->prev = new_ele;
+}
+
+inline void wdb_list_append(wdb_list_ele *new_ele, wdb_list_ele *head)
+{
+    wdb_list__add(new_ele, head, head->next);
+}
+
+inline void wdb_list_prepend(wdb_list_ele *new_ele, wdb_list_ele *head)
+{
+    wdb_list__add(new_ele, head->prev, head);
+}
+
+inline void wdb_list__del_internal(wdb_list_ele *prev, wdb_list_ele *next)
+{
+    next->prev = prev;
+    prev->next = next;
+}
+
+inline void wdb_list__del_entry(wdb_list_ele *entry)
+{
+    wdb_list__del_internal(entry->prev, entry->next);
+}
+
+inline void wdb_list_del(wdb_list_ele *entry)
+{
+    wdb_list__del_entry(entry);
+    entry->prev = NULL;
+    entry->next = NULL;
+}
+
+inline void wdb_list_del_init(wdb_list_ele *entry)
+{
+    wdb_list__del_entry(entry);
+    wdb_list_init(entry);
+}
+
+inline void wdb_list_move_append(wdb_list_ele *entry, wdb_list_ele *list)
+{
+    wdb_list__del_entry(entry);
+    wdb_list_append(entry, list);
+}
+
+inline void wdb_list_move_prepend(wdb_list_ele *entry, wdb_list_ele *list)
+{
+    wdb_list__del_entry(entry);
+    wdb_list_prepend(entry, list);
+}
+
+inline void wdb_list_replace(wdb_list_ele *old, wdb_list_ele *new_ele)
+{
+    new_ele->next = old->next;
+    new_ele->prev = old->prev;
+    old->next->prev = new_ele;
+    old->prev->next = new_ele;
+}
+
+inline void wdb_list_replace_init(wdb_list_ele *old, wdb_list_ele *new_ele)
+{
+    wdb_list_replace(old, new_ele);
+    wdb_list_init(old);
+}
+
+inline void wdb_list_rotate_left(wdb_list_ele *entry)
+{
+    if (!wdb_list_is_empty(entry)) {
+        wdb_list_move_prepend(entry->next, entry);
+    }
+}
+
+inline void wdb_list__cut_position(wdb_list_ele *list, wdb_list_ele *head, wdb_list_ele *entry)
+{
+    wdb_list_ele *new_first = entry->next;
+    list->next = head->next;
+    list->next->prev = list;
+    list->prev = entry;
+    entry->next = list;
+    head->next = new_first;
+    new_first->prev = head;
+}
+
+inline void wdb_list_cut_position(wdb_list_ele *list, wdb_list_ele *head, wdb_list_ele *entry)
+{
+    if (wdb_list_is_empty(head)) return;
+
+    if (entry == head) wdb_list_init(list);
+    else wdb_list__cut_position(list, head, entry);
+}
+
+inline void wdb_list__splice(const wdb_list_ele *list, wdb_list_ele *prev, wdb_list_ele *next)
+{
+    wdb_list_ele *first = list->next;
+    wdb_list_ele *last = list->prev;
+
+    first->prev = prev;
+    prev->next = first;
+
+    last->next = next;
+    next->prev = last;
+}
+
+inline void wdb_list_splice(wdb_list_ele *list, wdb_list_ele *head)
+{
+    if (!wdb_list_is_empty(list)) {
+        wdb_list__splice(list, head, head->next);
+    }
+}
+
+inline void wdb_list_splice_tail(wdb_list_ele *list, wdb_list_ele *head)
+{
+    if (!wdb_list_is_empty(list)) {
+        wdb_list__splice(list, head->prev, head);
+    }
+}
+
+inline void wdb_list_splice_init(wdb_list_ele *list, wdb_list_ele *head)
+{
+    if (!wdb_list_is_empty(list)) {
+        wdb_list__splice(list, head, head->next);
+        wdb_list_init(list);
+    }
+}
+
+inline void wdb_list_splice_tail_init(wdb_list_ele *list, wdb_list_ele *head)
+{
+    if (!wdb_list_is_empty(list)) {
+        wdb_list__splice(list, head->prev, head);
+        wdb_list_init(list);
+    }
+}
+
+inline b32 wdb_list_is_last(const wdb_list_ele *ele, const wdb_list_ele *head)
+{
+    return (ele->next == head);
+}
+
+inline b32 wdb_list_is_empty(const wdb_list_ele *list)
+{
+    return (list->next == list);
 }
 
 #endif // WDB_IMPLEMENTATION
