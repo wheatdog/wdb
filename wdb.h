@@ -1,4 +1,4 @@
-/* wdb.h - v0.04 - WheatDog's Box, A Personal C Helper Library - public domain
+/* wdb.h - v0.05 - WheatDog's Box, A Personal C Helper Library - public domain
                  - no warranty implied; use at your own risk
 
          This is a single header file with a bunch of useful stuff.
@@ -34,6 +34,7 @@ TODOS
     - Does I want wdb_arr dynamic shrink? or wdb_arr_set_capacity is good enough?
 
 VERSION HISTORY
+    - 0.05  - wdb_heap
     - 0.04  - wdb_list
     - 0.03  - wdb_arr
     - 0.02  - Preset and Base Types
@@ -264,7 +265,7 @@ typedef i32 b32;
 #endif
 
 #ifndef wdb_swap
-#define wdb_swap(type, a, b) do { type tmp = (a); (a) = (b); (b) = tmp; } while (0)
+#define wdb_swap(type, a, b) do { type wdb__tmp = (a); (a) = (b); (b) = wdb__tmp; } while (0)
 #endif
 
 #ifndef wdb_min
@@ -340,10 +341,16 @@ WDB_DEF isize wdb_printf_err_va (char const *fmt, va_list va);
 //
 //
 
+#define WDB_ARR_CMP(name) int name(const void *a, const void *b)
+typedef WDB_ARR_CMP(wdb_arr_cmp);
+
 typedef struct
 {
     isize count;
+    isize elem_size;
     isize capacity;
+    wdb_arr_cmp *cmp;
+    void *tmp;         /* used for wdb_heap */
 } wdb__arr_header;
 
 #define wdb_arr(type) type *
@@ -356,30 +363,37 @@ WDB_STATIC_ASSERT(WDB_ARR_GROW_FORMULA(0) >= 0);
 
 #define WDB_ARR_HEADER(x)   ((wdb__arr_header *)(x) - 1)
 #define wdb_arr_count(x)    (WDB_ARR_HEADER(x)->count)
+#define wdb_arr_elem_size(x)(WDB_ARR_HEADER(x)->elem_size)
 #define wdb_arr_capacity(x) (WDB_ARR_HEADER(x)->capacity)
+#define wdb_arr_cmp(x)      (WDB_ARR_HEADER(x)->cmp)
 
-#define wdb_arr_init_reserve(x, cap) do {                               \
+#define wdb_arr_init_reserve(x, cap, comp) do {                          \
         void **wdb__arr_ = (void **)&(x);                               \
         wdb__arr_header *wdb__ah_ = (wdb__arr_header *)malloc(wdb_size_of(wdb__arr_header) + wdb_size_of(*(x))*(cap)); \
         wdb__ah_->count = 0;                                            \
+        wdb__ah_->elem_size = wdb_size_of((x)[0]);                      \
         wdb__ah_->capacity = cap;                                       \
+        wdb__ah_->cmp = comp;                                           \
+        wdb__ah_->tmp = malloc(wdb__ah_->elem_size);                    \
         *wdb__arr_ = (void *)(wdb__ah_ + 1);                            \
     } while(0)
 
-#define wdb_arr_init(x) wdb_arr_init_reserve(x, WDB_ARR_GROW_FORMULA(0))
+#define wdb_arr_init(x) wdb_arr_init_reserve(x, WDB_ARR_GROW_FORMULA(0), NULL)
+#define wdb_arr_init2(x, cmp) wdb_arr_init_reserve(x, WDB_ARR_GROW_FORMULA(0), cmp)
 
 #define wdb_arr_free(x) do {                            \
         wdb__arr_header *wdb__ah_ = WDB_ARR_HEADER(x);  \
+        free(wdb__ah_->tmp);                            \
         free(wdb__ah_);                                 \
     } while(0)
 
 #define wdb_arr_set_capacity(x, capacity) do {                          \
         if (x) {                                                        \
             void **wdb_arr_ = (void **)&(x);                            \
-            *wdb_arr_ = wdb__arr_set_capacity((x), (capacity), wdb_size_of(*(x))); \
+            *wdb_arr_ = wdb__arr_set_capacity((x), (capacity));         \
         }                                                               \
     } while(0)
-WDB_DEF void *wdb__arr_set_capacity(void *array, isize capacity, isize element_size);
+WDB_DEF void *wdb__arr_set_capacity(void *array, isize capacity);
 
 #define wdb_arr_grow(x, min_capacity) do {                              \
         isize new__capacity_ = WDB_ARR_GROW_FORMULA(wdb_arr_capacity(x)); \
@@ -415,7 +429,7 @@ WDB_DEF void *wdb__arr_set_capacity(void *array, isize capacity, isize element_s
 #define wdb_arr_delv(x, i, n) do {                                      \
         if (n) {                                                        \
             WDB_ASSERT(((i) >= 0) && ((i)+n-1) < wdb_arr_count(x));     \
-            wdb__arr_delv(x, i, n, wdb_size_of((x)[0]));                \
+            wdb__arr_delv(x, i, n, wdb_arr_elem_size(x));               \
         }                                                               \
     } while(0)
 
@@ -440,8 +454,8 @@ WDB_DEF void *wdb__arr_set_capacity(void *array, isize capacity, isize element_s
     } while(0)
 
 
-#define wdb_arr_bin_search(ptr, target, cmp) wdb_arr__bin_search((ptr), wdb_arr_count(ptr), wdb_size_of((ptr)[0]), (target), (cmp))
-WDB_DEF b32 wdb_arr__bin_search(void *ptr, isize count , isize element_size, const void *target, int (*cmp)(const void *, const void *));
+#define wdb_arr_bin_search(ptr, target, cmp) wdb_arr__bin_search((ptr), wdb_arr_count(ptr), wdb_arr_elem_size(ptr), (target), (cmp))
+WDB_DEF b32 wdb_arr__bin_search(void *ptr, isize count , isize element_size, const void *target, wdb_arr_cmp *cmp);
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -507,6 +521,35 @@ WDB_DEF b32 wdb_list_is_empty(const wdb_list_ele *list);
 }
 #endif
 
+//////////////////////////////////////////////////////////////////////////////
+//
+// Binary Heap (array implementation)
+//
+//
+
+#define wdb_heap(type) wdb_arr(type)
+
+#define wdb_heap_init(h, cmp) wdb_arr_init2(h, cmp)
+
+#define wdb_heap_push(h, element) do {          \
+        wdb_arr_push(h, element);               \
+        wdb_heap__bubble_up(h);                 \
+    } while(0)
+WDB_DEF void wdb_heap__bubble_up(void *heap);
+
+#define wdb_heap_peak(h) ((h)[0])
+#define wdb_heap_is_empty(h) wdb_arr_empty(h)
+#define wdb_heap_count(h) wdb_arr_count(h)
+
+#define wdb_heap_del_top(h) do {                \
+        if (!wdb_heap_is_empty(h))  {           \
+            wdb_heap__del_top(h);               \
+        }                                       \
+    } while(0)
+WDB_DEF void wdb_heap__del_top(void *heap);
+
+#define wdb_heap_free(h) wdb_arr_free(h)
+
 //
 //
 ////   end header file   /////////////////////////////////////////////////////
@@ -558,18 +601,16 @@ isize wdb_printf_err_va(char const *fmt, va_list va)
 //
 //
 
-void *wdb__arr_set_capacity(void *array, isize capacity, isize element_size)
+void *wdb__arr_set_capacity(void *array, isize capacity)
 {
     wdb__arr_header *header = WDB_ARR_HEADER(array);
     wdb__arr_header *new_header = NULL;
-
-    WDB_ASSERT(element_size > 0);
 
     if (capacity == header->capacity) return array;
 
     if (capacity < header->count) header->count = capacity;
 
-    new_header = (wdb__arr_header *)realloc(header, wdb_size_of(wdb__arr_header) + element_size*capacity);
+    new_header = (wdb__arr_header *)realloc(header, wdb_size_of(wdb__arr_header) + header->elem_size*capacity);
     WDB_ASSERT(new_header != NULL);
     new_header->capacity = capacity;
 
@@ -751,6 +792,90 @@ inline b32 wdb_list_is_last(const wdb_list_ele *ele, const wdb_list_ele *head)
 inline b32 wdb_list_is_empty(const wdb_list_ele *list)
 {
     return (list->next == list);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Binary Heap (array implementation)
+//
+//
+
+void wdb_heap__bubble_up(void *heap)
+{
+    wdb__arr_header *header = WDB_ARR_HEADER(heap);
+    u8 *u8ptr = (u8 *)heap, *curptr, *parptr;
+    isize size = header->elem_size, cur = header->count-1, par = (cur-1)/2;
+    int ret;
+
+    while (cur > 0) {
+        curptr = u8ptr + cur*size;
+        parptr = u8ptr + par*size;
+
+        ret = header->cmp(curptr, parptr);
+        if (ret <= 0) break;
+
+        memcpy(header->tmp, curptr, size);
+        memcpy(curptr, parptr, size);
+        memcpy(parptr, header->tmp, size);
+
+        cur = par;
+        par = (cur-1)/2;
+    }
+}
+
+void wdb_heap__del_top(void *heap)
+{
+    wdb__arr_header *header = WDB_ARR_HEADER(heap);
+    isize lch, cur = 0, cha = 1, chb = 2, size = header->elem_size;
+    u8 *u8ptr = (u8 *)heap, *lastptr = u8ptr + (header->count-1)*size;
+    u8 *curptr, *chaptr, *chbptr, *lchptr;
+    int ret;
+
+    --header->count;
+    if (header->count == 0) return;
+
+    memcpy(header->tmp, lastptr, size);
+    memcpy(lastptr, u8ptr, size);
+    memcpy(u8ptr, header->tmp, size);
+
+    while (cur <= header->count) {
+        curptr = u8ptr + cur*size;
+        chaptr = u8ptr + cha*size;
+        chbptr = u8ptr + chb*size;
+
+        if ((cha >= header->count) && (chb >= header->count)) break;
+
+        if ((cha >= header->count) && (chb < header->count)) {
+            lchptr = chbptr;
+            lch = chb;
+        }
+        else if ((chb >= header->count) && (cha < header->count)) {
+            lchptr = chaptr;
+            lch = cha;
+        }
+        else {
+            ret = header->cmp(chaptr, chbptr);
+            if (ret > 0) {
+                lchptr = chaptr;
+                lch = cha;
+            }
+            else {
+                lchptr = chbptr;
+                lch = chb;
+            }
+        }
+
+        ret = header->cmp(curptr, lchptr);
+        if (ret > 0) break;
+
+        memcpy(header->tmp, curptr, size);
+        memcpy(curptr, lchptr, size);
+        memcpy(lchptr, header->tmp, size);
+
+        cur = lch;
+        cha = cur*2+1;
+        chb = cur*2+2;
+    }
 }
 
 #endif // WDB_IMPLEMENTATION
